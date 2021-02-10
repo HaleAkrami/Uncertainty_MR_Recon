@@ -38,7 +38,7 @@ def subsample(analyze_img_data, substep=4, low_freq_percent=0.04):
     subsampled_img_k = np.ones_like(data, dtype='complex')
     imgarr = np.ones_like(data)
 
-    np.set_printoptions(threshold=1) # Haleh:I modifed this line
+    #np.set_printoptions(threshold='nan')
 
     for slice_idx in range(data.shape[2]):
         data_slice = np.squeeze(data[:, :, slice_idx])
@@ -57,16 +57,16 @@ def subsample(analyze_img_data, substep=4, low_freq_percent=0.04):
         mod_low_freq_percent = 1.0 / float(
             substep) * low_freq_percent + low_freq_percent
 
-        start = len(tshift) / 2 - int(
+        start = int(len(tshift) / 2) - int(
             mod_low_freq_percent * float(len(tshift)))
-        end = len(tshift) / 2 + int(mod_low_freq_percent * float(len(tshift)))
+        end = int(len(tshift) / 2) + int(mod_low_freq_percent * float(len(tshift)))
 
-        for i in range(0, int(start)): # Haleh:I modified this line
+        for i in range(0, start):
             if i % substep == 0:
                 subshift[i] = tshift[i]
-        for i in range(int(start), int(end)): # haleh: I modified this line
+        for i in range(start, end):
             subshift[i] = tshift[i]
-        for i in range(int(end), len(tshift)):
+        for i in range(end, len(tshift)):
             if i % substep == 0:
                 subshift[i] = tshift[i]
 

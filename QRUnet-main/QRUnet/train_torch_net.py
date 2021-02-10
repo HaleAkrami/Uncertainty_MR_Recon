@@ -11,20 +11,24 @@ from utils.output import create_output_dir
 from utils.constants import SLICE_WIDTH, SLICE_HEIGHT
 
 from datetime import datetime
+import torch
+import torch.utils.data
+from torch import nn, optim
+from torch.nn import functional as F
+from torchvision import datasets, transforms
+from torchvision.utils import save_image
+from keras.datasets import mnist
+from unet import UNet as UNet
+import numpy as np
+from sklearn.model_selection import train_test_split
+from tqdm import tqdm 
+from torch import Tensor
+from torch.utils.data import DataLoader, TensorDataset
 
-from keras.models import Model
-from keras.layers import Input, Dense, Activation, concatenate, UpSampling2D
-from keras.layers.convolutional import Conv2D, Conv2DTranspose
-from keras.layers.pooling import MaxPooling2D, AveragePooling2D
-from keras.losses import mean_squared_error, mean_absolute_error
-from keras.optimizers import RMSprop
-from keras.initializers import RandomNormal
-from keras.callbacks import ModelCheckpoint
-import tensorflow.keras.backend as kb
 
-
+device="cuda"
 # Q for quantile regression
-CONST_Q = 0.5
+CONST_Q = 0.85
 
 # Training set construction
 NUM_SAMPLE_SLICES = 35
@@ -37,13 +41,13 @@ FNET_ERROR_MAE = "mae"
 FNET_ERROR_QR = 'qr'
  
 # Checkpointing
-CHECKPOINT_FILE_PATH_FORMAT = "fnet-{epoch:02d}.hdf5"
-SFX_NETWORK_CHECKPOINTS = "checkpoints"
+CHECKPOINT_FILE_PATH_FORMAT = "fnet-{epoch:02d}.pt"
+#SFX_NETWORK_CHECKPOINTS = "checkpoints"
 
 
 def qr_loss(y, x, q=CONST_Q):
-    custom_loss = kb.sum(kb.maximum(q * (y - x), (q - 1) * (y - x)))
- #   torch.sum(torch.max(Q * (recon_x - x), (Q - 1) * (recon_x - x)))
+    custom_loss = torch.sum(torch.max(q * (y - x), (q - 1) * (y - x)))
+ #   torch.sum(torch.max(Q * (recon_x - x), (Q - 1) * (recon_x - x))) #check what are x and y
     return custom_loss
 
 
@@ -76,165 +80,79 @@ class FNet:
         if not self.architecture_exists:
             self._create_architecture()
 
-        checkpoints_dir_path = checkpoints_dir #create_output_dir(base_path=checkpoints_dir,
-                                                # suffix=SFX_NETWORK_CHECKPOINTS,
-                                                # exp_name=None)
-        checkpoint_fpath_format = os.path.join(
-            checkpoints_dir_path, CHECKPOINT_FILE_PATH_FORMAT)
-        checkpoint_callback = ModelCheckpoint(
-            checkpoint_fpath_format, monitor='val_loss', period=1)
+        
+        
+        X_train, X_test, X_lab_train, X_lab_test = train_test_split(
+            y_folded, y_original, test_size=0.2, random_state=10003)
 
-        print("Network checkpoints will be saved to: '{}'".format(
-            checkpoints_dir_path))
+        X_train = np.transpose(X_train, (0, 3, 1, 2))
+        X_test = np.transpose(X_test, (0, 3, 1, 2))
+        X_lab_train = np.transpose(X_lab_train, (0, 3, 1, 2))
+        X_lab_test = np.transpose(X_lab_test, (0, 3, 1, 2))
 
-        self.model.fit(
-            y_folded,
-            y_original,
-            batch_size=batch_size,
-            epochs=num_epochs,
-            shuffle=True,
-            validation_split=.2,
-            verbose=1,
-            callbacks=[checkpoint_callback])
+        train_data = TensorDataset( Tensor(X_train), Tensor(X_lab_train) )
+        test_data = TensorDataset( Tensor(X_test), Tensor(X_lab_test) )
 
-    def _parse_error(self):
-        if self.error == FNET_ERROR_MSE:
-            return mean_squared_error
-        elif self.error == FNET_ERROR_MAE:
-            return mean_absolute_error
-        elif self.error == FNET_ERROR_QR:
-            return qr_loss
-        else:
-            raise Exception(
-                "Attempted to train network with an invalid loss function!")
+        train_loader = torch.utils.data.DataLoader(train_data,
+                                               batch_size=batch_size,
+                                               shuffle=True)
+        test_loader = torch.utils.data.DataLoader(test_data,
+                                              batch_size=len(test_data),
+                                              shuffle=False)
+        
+        for epoch in range(num_epochs):
+            self.model.train()
+            train_loss = 0
 
-    def _get_initializer_seed(self):
-        epoch = datetime.utcfromtimestamp(0)
-        curr_time = datetime.now()
-        millis_since_epoch = (curr_time - epoch).total_seconds() * 1000
-        return int(millis_since_epoch)
+            for batch_idx, data in enumerate(tqdm(train_loader)):
+                if torch.cuda.is_available():
+                    in_data = data[0].cuda()
+                    out_data=data[1].cuda()
+                self.optimizer.zero_grad()
+                recon_batch = self.model(in_data)
+                loss = qr_loss(out_data, recon_batch, q=CONST_Q)
+                loss.backward()
+                train_loss += loss.item()
+                self.optimizer.step()
+            
+            test_loss=0 
+            self.model.eval()
+            with torch.no_grad():
+                for batch_idx, data in enumerate(test_loader):
+                    if torch.cuda.is_available():
+                        in_data = data[0].cuda()
+                        out_data=data[1].cuda()
+                    recon_batch = self.model(in_data)
+                    loss = qr_loss(out_data, recon_batch, q=CONST_Q)
+                    test_loss += loss.item()
+                    self.optimizer.step()
+            
+            torch.save({
+            'epoch': epoch,
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'train_loss': train_loss / len(train_loader.dataset),
+            'valid_loss':test_loss / len(test_loader.dataset)
+            }, checkpoints_dir+CHECKPOINT_FILE_PATH_FORMAT)
+            #if batch_idx % args.log_interval == 0:
+                #print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                    #epoch, batch_idx * len(data), len(train_loader.dataset),
+                    #100. * batch_idx / len(train_loader),
+                    #loss.item() / len(data)))
 
+            print('====> Epoch: {} Average train loss: {:.4f}'.format(
+                    epoch, train_loss / len(train_loader.dataset)))
+            print('====> Epoch: {} Average test loss: {:.4f}'.format(
+                    epoch, test_loss / len(test_loader.dataset)))
+
+    
     def _create_architecture(self):
-        inputs = Input(shape=(256, 256, 1))
+        self.model = UNet(1, 1).to(device)
+        self.optimizer = optim.RMSprop(self.model.parameters(), lr=LEARNING_RATE, eps=1e-08, weight_decay=0) #does not have rho=RMS_WEIGHT_DECAY
+        
 
-        weights_initializer = RandomNormal(
-            mean=0.0, stddev=.01, seed=self._get_initializer_seed())
-
-        # Using the padding=`same` option is equivalent to zero padding
-        conv2d_1 = Conv2D(
-            filters=64,
-            kernel_size=(3, 3),
-            strides=(1, 1),
-            padding='same',
-            activation='relu',
-            kernel_initializer=weights_initializer)(inputs)
-
-        conv2d_2 = Conv2D(
-            filters=64,
-            kernel_size=(3, 3),
-            strides=(1, 1),
-            padding='same',
-            activation='relu',
-            kernel_initializer=weights_initializer)(conv2d_1)
-
-        maxpool_1 = MaxPooling2D(
-            pool_size=(2, 2), strides=(2, 2), padding='same')(conv2d_2)
-
-        conv2d_3 = Conv2D(
-            filters=128,
-            kernel_size=(3, 3),
-            strides=(1, 1),
-            padding='same',
-            activation='relu',
-            kernel_initializer=weights_initializer)(maxpool_1)
-
-        conv2d_4 = Conv2D(
-            filters=128,
-            kernel_size=(3, 3),
-            strides=(1, 1),
-            padding='same',
-            activation='relu',
-            kernel_initializer=weights_initializer)(conv2d_3)
-
-        maxpool_2 = MaxPooling2D(
-            pool_size=(2, 2), strides=(2, 2), padding='same')(conv2d_4)
-
-        conv2d_5 = Conv2D(
-            filters=256,
-            kernel_size=(3, 3),
-            strides=(1, 1),
-            padding='same',
-            activation='relu',
-            kernel_initializer=weights_initializer)(maxpool_2)
-
-        conv2d_6 = Conv2D(
-            filters=128,
-            kernel_size=(3, 3),
-            strides=(1, 1),
-            padding='same',
-            activation='relu',
-            kernel_initializer=weights_initializer)(conv2d_5)
-
-        unpool_1 = concatenate(
-            [UpSampling2D(size=(2, 2))(conv2d_6), conv2d_4], axis=3)
-
-        conv2d_7 = Conv2D(
-            filters=128,
-            kernel_size=(3, 3),
-            strides=(1, 1),
-            padding='same',
-            activation='relu',
-            kernel_initializer=weights_initializer)(unpool_1)
-
-        conv2d_8 = Conv2D(
-            filters=64,
-            kernel_size=(3, 3),
-            strides=(1, 1),
-            padding='same',
-            activation='relu',
-            kernel_initializer=weights_initializer)(conv2d_7)
-
-        unpool_2 = concatenate(
-            [UpSampling2D(size=(2, 2))(conv2d_8), conv2d_2], axis=3)
-
-        conv2d_9 = Conv2D(
-            filters=64,
-            kernel_size=(3, 3),
-            strides=(1, 1),
-            padding='same',
-            activation='relu',
-            kernel_initializer=weights_initializer)(unpool_2)
-        conv2d_10 = Conv2D(
-            filters=64,
-            kernel_size=(3, 3),
-            strides=(1, 1),
-            padding='same',
-            activation='relu',
-            kernel_initializer=weights_initializer)(conv2d_9)
-
-        # Conv2d_10 is 256 x 256 x 64. We now need to reduce the number of output
-        # channels via a convolution with `n` filters, where `n` is the original
-        # number of channels. We therefore choose `n` = 1.
-
-        outputs = Conv2D(
-            filters=1,
-            kernel_size=(1, 1),
-            strides=(1, 1),
-            padding='same',
-            activation=None,
-            kernel_initializer=weights_initializer)(conv2d_10)
-
-        optimizer = RMSprop(
-            lr=LEARNING_RATE, rho=RMS_WEIGHT_DECAY, epsilon=1e-08, decay=0)
-
-        self.model = Model(inputs=[inputs], outputs=[outputs])
-        if self.num_gpus >= 2:
-            self.model = multi_gpu_model(self.model, gpus=self.num_gpus)
-
-        self.model.compile(
-            optimizer=optimizer,
-            loss=self._parse_error(),
-            metrics=[mean_squared_error])
+        #if self.num_gpus >= 2:
+            #self.model = multi_gpu_model(self.model, gpus=self.num_gpus) Haleh commented
 
         self.architecture_exists = True
 
@@ -389,7 +307,7 @@ def main():
         '-c',
         '--checkpoints_dir',
         type=str,
-        default='/ImagePTE1/akrami/MRI_Recon_results/qr_' + str(CONST_Q),
+        default='/ImagePTE1/akrami/MRI_Recon_results/torch/qr_' + str(CONST_Q),
         help='The base directory under which to store network checkpoints after each iteration')
 
     args = parser.parse_args()
