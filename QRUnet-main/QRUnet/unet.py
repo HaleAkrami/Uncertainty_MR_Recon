@@ -30,3 +30,8 @@ class UNet(nn.Module):
         x = self.up2(x, x1)
         logits = self.outc(x)
         return logits
+
+    def weight_reset(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                torch.nn.init.normal_(m.weight, mean=0.0, std=.01)

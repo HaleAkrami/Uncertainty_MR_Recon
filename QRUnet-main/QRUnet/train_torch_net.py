@@ -28,7 +28,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 device="cuda"
 # Q for quantile regression
-CONST_Q = 0.85
+CONST_Q = 0.15
 
 # Training set construction
 NUM_SAMPLE_SLICES = 35
@@ -50,6 +50,8 @@ def qr_loss(y, x, q=CONST_Q):
  #   torch.sum(torch.max(Q * (recon_x - x), (Q - 1) * (recon_x - x))) #check what are x and y
     return custom_loss
 
+
+    
 
 class FNet:
     def __init__(self, num_gpus, error):
@@ -97,9 +99,9 @@ class FNet:
                                                batch_size=batch_size,
                                                shuffle=True)
         test_loader = torch.utils.data.DataLoader(test_data,
-                                              batch_size=len(test_data),
+                                              batch_size=batch_size,
                                               shuffle=False)
-        
+        #self.model.weight_reset()
         for epoch in range(num_epochs):
             self.model.train()
             train_loss = 0
@@ -114,7 +116,7 @@ class FNet:
                 loss.backward()
                 train_loss += loss.item()
                 self.optimizer.step()
-            
+            print(batch_idx)
             test_loss=0 
             self.model.eval()
             with torch.no_grad():
@@ -125,7 +127,7 @@ class FNet:
                     recon_batch = self.model(in_data)
                     loss = qr_loss(out_data, recon_batch, q=CONST_Q)
                     test_loss += loss.item()
-                    self.optimizer.step()
+                    
             
             torch.save({
             'epoch': epoch,
@@ -148,7 +150,7 @@ class FNet:
     
     def _create_architecture(self):
         self.model = UNet(1, 1).to(device)
-        self.optimizer = optim.RMSprop(self.model.parameters(), lr=LEARNING_RATE, eps=1e-08, weight_decay=0) #does not have rho=RMS_WEIGHT_DECAY
+        self.optimizer = optim.RMSprop(self.model.parameters(), lr=LEARNING_RATE, eps=1e-08,alpha=0.9, weight_decay=0) #does not have rho=RMS_WEIGHT_DECAY I used alpha=RMS_WEIGHT_DECAY
         
 
         #if self.num_gpus >= 2:
