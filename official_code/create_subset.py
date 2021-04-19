@@ -3,8 +3,8 @@ import pathlib
 from shutil import copy2
 
 
-root = '/big_disk/akrami/git_repos_new/Uncertainty_MR_Recon/official_code/data/singlecoil_val/'
-dst = '/big_disk/akrami/git_repos_new/Uncertainty_MR_Recon/official_code/data/singlecoil_subset_372_val/'
+root = '/big_disk/akrami/git_repos_new/Uncertainty_MR_Recon/official_code/data/singlecoil_test/'
+dst = '/big_disk/akrami/git_repos_new/Uncertainty_MR_Recon/official_code/data/singlecoil_subset_372_test/'
 files = list(pathlib.Path(root).iterdir())
 for fname in sorted(files):
             kspace = h5py.File(fname, 'r')['kspace']

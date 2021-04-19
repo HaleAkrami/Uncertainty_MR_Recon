@@ -301,7 +301,7 @@ def main(args):
 def create_arg_parser():
     parser = Args()
     parser.add_argument('--num-pools', type=int, default=4, help='Number of U-Net pooling layers')
-    parser.add_argument('--drop-prob', type=float, default=0.0, help='Dropout probability')
+    parser.add_argument('--drop-prob', type=float, default=0.1, help='Dropout probability')
     parser.add_argument('--num-chans', type=int, default=32, help='Number of U-Net channels')
 
     parser.add_argument('--batch-size', default=16, type=int, help='Mini batch size')

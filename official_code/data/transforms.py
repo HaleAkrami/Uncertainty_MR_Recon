@@ -65,7 +65,7 @@ def fft2(data):
     """
     assert data.size(-1) == 2
     data = ifftshift(data, dim=(-3, -2))
-    data = torch.fft(data, 2)
+    data = torch.fft.fft(data, 2,norm="forward")
     data = fftshift(data, dim=(-3, -2))
     return data
 
@@ -84,7 +84,7 @@ def ifft2(data):
     """
     assert data.size(-1) == 2
     data = ifftshift(data, dim=(-3, -2))
-    data = torch.fft.ifft(data, 2)
+    data = torch.fft.irfft(data, 2, norm="forward")  #data = torch.ifft(data, 2, normalize=True)
     data = fftshift(data, dim=(-3, -2))
     return data
 
@@ -193,6 +193,8 @@ def normalize_instance(data, eps=0.):
         Returns:
             torch.Tensor: Normalized tensor
         """
+
+    #data= data.real
     mean = data.mean()
     std = data.std()
     return normalize(data, mean, std, eps), mean, std

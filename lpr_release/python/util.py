@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from os.path import join
 import lpr
+import pathlib
 
 def load_fast_mri_data(vol_path, slice_n):
     """The code for loading FastMRI dataset.
@@ -19,6 +20,32 @@ def load_fast_mri_data(vol_path, slice_n):
 
     return np.flip(k_space[slice_n, :, :, :], 1)
 
+class load_test_mri_data:
+
+
+    def __init__(self,root,challenge):
+
+        if challenge not in ('singlecoil', 'multicoil'):
+                raise ValueError('challenge should be either "singlecoil" or "multicoil"')
+
+        
+        self.examples = []
+        files = list(pathlib.Path(root).iterdir())
+        
+        for fname in sorted(files):
+            kspace = h5py.File(fname, 'r')['kspace']
+            num_slices = kspace.shape[0]
+            self.examples += [(fname, slice) for slice in range(num_slices)]
+
+    
+    def __len__(self):
+        return len(self.examples)
+
+    def __getitem__(self, i):
+        fname, slice = self.examples[i]
+        with h5py.File(fname, 'r') as data:
+            k_space = np.array(data['kspace'])
+            return np.flip(k_space[slice, :, :, :], 1)
 
 def write_fig_to_file(
         img, img_path, cmap='gray',
@@ -110,4 +137,47 @@ def save_results_up(
     write_fig_to_file(
         np.abs(org_img-recon.cpu().numpy()), 
         join(out_dir, ' error.png')
+    )
+
+def save_results_uncer(
+        recon, var,org_img,
+        down_img,
+        out_dir, crop=False
+    ):
+    """Utility function for saving reconstructions and LPRs as images
+    Input Parameters:
+        recon:   (#rows, #columns) reconstructed image
+        perturb: (Perturbation) perturbation object
+        resp:    (#rows, #columns) LPR
+        out_dir: (string) folder to which images will be saved
+        crop:    (bool) whether to apply cropping
+    """
+
+ 
+        
+    # save normal reconstruction
+    write_fig_to_file(
+        recon, 
+        join(out_dir, 'recon.png')
+    )
+
+    # save LPR
+    write_fig_to_file(
+        org_img, 
+        join(out_dir, ' org_img.png')
+    )
+
+    write_fig_to_file(
+        down_img.squeeze(0).squeeze(0).cpu().numpy(), 
+        join(out_dir, ' down_img.png')
+    )
+
+    write_fig_to_file(
+        np.abs(org_img-recon.cpu().numpy()), 
+        join(out_dir, ' error.png')
+    )
+
+    write_fig_to_file(
+        var,
+        join(out_dir, ' var.png')
     )
