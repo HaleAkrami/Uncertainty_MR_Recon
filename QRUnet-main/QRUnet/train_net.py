@@ -41,9 +41,7 @@ CHECKPOINT_FILE_PATH_FORMAT = "fnet-{epoch:02d}.hdf5"
 SFX_NETWORK_CHECKPOINTS = "checkpoints"
 
 
-def qr_loss(y, x, q=CONST_Q):
-    custom_loss = kb.sum(kb.maximum(q * (y - x), (q - 1) * (y - x)))
- #   torch.sum(torch.max(Q * (recon_x - x), (Q - 1) * (recon_x - x)))
+ torch.max(Q * (recon_x - x), (Q - 1) * (recon_x - x)))
     return custom_loss
 
 

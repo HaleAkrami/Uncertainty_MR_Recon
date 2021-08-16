@@ -193,11 +193,7 @@ def main(args):
         down_perturbed_data_k = sampling_func.subsample(perturbed_data_k)
 
         # Run reconstruction
-        print('Running reconstruction')
-        recon,down_img = unet_recon(
-            down_data_k,data_k,
-            R=3
-        )
+      
         perturb_recon,perturb_down = unet_recon(
             down_perturbed_data_k,perturbed_data_k,
             R=3

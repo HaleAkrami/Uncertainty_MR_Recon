@@ -101,7 +101,7 @@ def est_phase_sens_maps(down_k, calib):
 
     # Call MATLAB function
     print('Estimating phase and senstivity maps...Calling MATLAB function...')
-    subprocess.run(['python3', 'lpr/est_phase_sens_maps_wrapper.py'])
+    subprocess.run(['python', 'lpr/est_phase_sens_maps_wrapper.py'])
     
     # Load MATLAB results
     est_phase = sio.loadmat('est_phase.mat')['est_phase']

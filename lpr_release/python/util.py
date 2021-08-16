@@ -17,6 +17,24 @@ def load_fast_mri_data(vol_path, slice_n):
     with h5py.File(vol_path, 'r') as data:
         # load k-space data
         k_space = np.array(data['kspace'])
+        #k_space = np.expand_dims(k_space, 1) for single coil
+
+    return np.flip(k_space[slice_n, :, :, :], 1)
+
+
+def load_fast_mri_data_single(vol_path, slice_n):
+    """The code for loading FastMRI dataset.
+    Input Parameters:
+        vol_path:  (string) Path to the volume
+        slice_n:   (int) Slice number
+
+    Output Parameter:
+        data_k: (#channels x #rows x #columns) k-space data
+    """
+    with h5py.File(vol_path, 'r') as data:
+        # load k-space data
+        k_space = np.array(data['kspace'])
+        k_space = np.expand_dims(k_space, 1)
 
     return np.flip(k_space[slice_n, :, :, :], 1)
 
@@ -45,6 +63,7 @@ class load_test_mri_data:
         fname, slice = self.examples[i]
         with h5py.File(fname, 'r') as data:
             k_space = np.array(data['kspace'])
+            #k_space = np.expand_dims(k_space, 1) #only for single coil
             return np.flip(k_space[slice, :, :, :], 1)
 
 def write_fig_to_file(
@@ -103,7 +122,7 @@ def save_results(
 
 def save_results_up(
         recon, org_img,
-        down_img,
+        down_img, org_img_v1,
         out_dir, crop=False
     ):
     """Utility function for saving reconstructions and LPRs as images
@@ -137,6 +156,11 @@ def save_results_up(
     write_fig_to_file(
         np.abs(org_img-recon.cpu().numpy()), 
         join(out_dir, ' error.png')
+    )
+
+    write_fig_to_file(
+        np.abs(org_img - org_img_v1),
+        join(out_dir, ' error_org.png')
     )
 
 def save_results_uncer(
